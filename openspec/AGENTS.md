@@ -62,6 +62,11 @@ After deployment, create separate PR to:
 - Update `specs/` if capabilities changed
 - Use `openspec archive <change-id> --skip-specs --yes` for tooling-only changes (always pass the change ID explicitly)
 - Run `openspec validate --strict --no-interactive` to confirm the archived change passes checks
+- **Commit archived changes**:
+  - Stage archived folder: `git add openspec/changes/archive/YYYY-MM-DD-[name]/`
+  - Stage spec updates: `git add openspec/specs/`
+  - Commit with conventional message: `git commit -m "docs: archive [change-id]"`
+  - Push to GitHub: `git push`
 
 ## Before Any Task
 

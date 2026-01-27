@@ -1,0 +1,534 @@
+openapi: 3.1.0
+info:
+  title: CamOpsAI (estado atual)
+  version: 0.1.0
+  description: Sistema de monitoramento de câmeras IP com análise de vídeo por LLM e alertas via WhatsApp.
+tags:
+  - name: cameras
+    description: Gestão de câmeras IP e controle de captura
+  - name: events
+    description: Consulta de eventos/timeline e frames
+  - name: alerts
+    description: Regras de alerta e histórico de envios
+servers:
+  - url: http://localhost:8000
+    description: API local (FastAPI)
+
+components:
+  schemas:
+    Camera:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        url: {type: string}
+        enabled: {type: boolean}
+        frame_interval: {type: integer, description: "Segundos entre capturas"}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    Event:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        camera_id: {type: string, format: uuid}
+        timestamp: {type: string, format: date-time}
+        description: {type: string}
+        keywords: {type: array, items: {type: string}}
+        frame_path: {type: string, nullable: true}
+        confidence: {type: number, format: float, nullable: true}
+        llm_provider: {type: string, nullable: true}
+        llm_model: {type: string, nullable: true}
+        processing_time_ms: {type: integer, nullable: true}
+    AlertRule:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        keywords: {type: array, items: {type: string}}
+        camera_ids: {type: array, items: {type: string}, nullable: true, description: "Null = todas as câmeras"}
+        phone_numbers: {type: array, items: {type: string}}
+        enabled: {type: boolean}
+        priority: {type: string, enum: [low, normal, high]}
+        cooldown_seconds: {type: integer}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    AlertLog:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        event_id: {type: string, format: uuid}
+        alert_rule_id: {type: string, format: uuid}
+        keywords_matched: {type: array, items: {type: string}}
+        sent_to: {type: array, items: {type: string}}
+        sent_at: {type: string, format: date-time}
+        status: {type: string, enum: [pending, sent, failed]}
+        error_message: {type: string, nullable: true}
+    Health:
+      type: object
+      properties:
+        status: {type: string}
+        database: {type: boolean}
+        llm_provider:
+          type: object
+          properties:
+            provider: {type: string}
+            model: {type: string}
+            healthy: {type: boolean}
+            error: {type: string, nullable: true}
+        whatsapp: {type: boolean}
+        version: {type: string}
+    Stats:
+      type: object
+      properties:
+        cameras_total: {type: integer}
+        cameras_active: {type: integer}
+        events_total: {type: integer}
+        events_today: {type: integer}
+        alerts_sent_total: {type: integer}
+        alerts_sent_today: {type: integer}
+        queue_size: {type: integer}
+        queue_processed: {type: integer}
+        queue_dropped: {type: integer}
+
+paths:
+  /:
+    get:
+      summary: Info raiz
+      responses:
+        "200":
+          description: Informações básicas
+  /api/v1/health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Estado atual do sistema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/stats:
+    get:
+      summary: Estatísticas gerais
+      responses:
+        "200":
+          description: Métricas de sistema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+
+  /api/v1/cameras:
+    get:
+      summary: Lista câmeras
+      tags: [cameras]
+      parameters:
+        - in: query
+          name: enabled_only
+          schema: {type: boolean}
+      responses:
+        "200":
+          description: Lista de câmeras
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Camera'}
+    post:
+      summary: Cria câmera
+      tags: [cameras]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Camera'
+              required: [name, url]
+      responses:
+        "201":
+          description: Câmera criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Camera'
+
+  /api/v1/cameras/{id}:
+    get:
+      summary: Detalha câmera
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Câmera
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Camera'
+        "404": {description: Não encontrada}
+    put:
+      summary: Atualiza câmera
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Camera'
+      responses:
+        "200": {description: Atualizada}
+        "404": {description: Não encontrada}
+    delete:
+      summary: Remove câmera
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204": {description: Removida}
+        "404": {description: Não encontrada}
+
+  /api/v1/cameras/{id}/start:
+    post:
+      summary: Inicia captura
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Captura iniciada}
+        "404": {description: Não encontrada}
+
+  /api/v1/cameras/{id}/stop:
+    post:
+      summary: Para captura
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200": {description: Captura parada}
+        "404": {description: Não encontrada}
+
+  /api/v1/cameras/{id}/status:
+    get:
+      summary: Status de captura
+      tags: [cameras]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Status atual
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string, format: uuid}
+                  name: {type: string}
+                  status: {type: string}
+                  frames_captured: {type: integer}
+                  last_frame_at: {type: string, format: date-time, nullable: true}
+                  errors_count: {type: integer}
+                  last_error: {type: string, nullable: true}
+        "404": {description: Não encontrada}
+
+  /api/v1/events:
+    get:
+      summary: Lista eventos (filtros opcionais)
+      tags: [events]
+      parameters:
+        - in: query
+          name: camera_id
+          schema: {type: string, format: uuid}
+        - in: query
+          name: keyword
+          schema: {type: string}
+        - in: query
+          name: start_date
+          schema: {type: string, format: date-time}
+        - in: query
+          name: end_date
+          schema: {type: string, format: date-time}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, default: 1}
+        - in: query
+          name: page_size
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: Página de eventos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/Event'}
+                  total: {type: integer}
+                  page: {type: integer}
+                  page_size: {type: integer}
+
+  /api/v1/events/timeline:
+    get:
+      summary: Timeline de eventos
+      tags: [events]
+      parameters:
+        - in: query
+          name: camera_ids
+          schema:
+            type: array
+            items: {type: string, format: uuid}
+        - in: query
+          name: start_date
+          schema: {type: string, format: date-time}
+        - in: query
+          name: end_date
+          schema: {type: string, format: date-time}
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 500, default: 100}
+      responses:
+        "200":
+          description: Lista ordenada por timestamp desc
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/Event'}
+                  start_date: {type: string, format: date-time, nullable: true}
+                  end_date: {type: string, format: date-time, nullable: true}
+
+  /api/v1/events/{id}:
+    get:
+      summary: Detalha evento
+      tags: [events]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Evento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        "404": {description: Não encontrado}
+
+  /api/v1/events/{id}/frame:
+    get:
+      summary: Baixa frame do evento
+      tags: [events]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: JPEG do frame
+          content:
+            image/jpeg: {}
+        "404": {description: Não encontrado ou sem frame}
+
+  /api/v1/events/search/keywords:
+    get:
+      summary: Busca por múltiplas keywords
+      tags: [events]
+      parameters:
+        - in: query
+          name: keywords
+          required: true
+          schema:
+            type: array
+            items: {type: string}
+        - in: query
+          name: camera_id
+          schema: {type: string, format: uuid}
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      responses:
+        "200":
+          description: Eventos únicos encontrados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/Event'}
+                  keywords_searched:
+                    type: array
+                    items: {type: string}
+
+  /api/v1/alerts/rules:
+    get:
+      summary: Lista regras de alerta
+      tags: [alerts]
+      parameters:
+        - in: query
+          name: enabled_only
+          schema: {type: boolean}
+      responses:
+        "200":
+          description: Regras
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AlertRule'}
+    post:
+      summary: Cria regra de alerta
+      tags: [alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AlertRule'}
+      responses:
+        "201":
+          description: Regra criada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AlertRule'}
+
+  /api/v1/alerts/rules/{id}:
+    get:
+      summary: Detalha regra
+      tags: [alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Regra
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AlertRule'}
+        "404": {description: Não encontrada}
+    put:
+      summary: Atualiza regra
+      tags: [alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AlertRule'}
+      responses:
+        "200": {description: Atualizada}
+        "404": {description: Não encontrada}
+    delete:
+      summary: Remove regra
+      tags: [alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204": {description: Removida}
+        "404": {description: Não encontrada}
+
+  /api/v1/alerts/logs:
+    get:
+      summary: Lista logs de alertas
+      tags: [alerts]
+      parameters:
+        - in: query
+          name: rule_id
+          schema: {type: string, format: uuid}
+        - in: query
+          name: status
+          schema: {type: string}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, default: 1}
+        - in: query
+          name: page_size
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: Página de logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items: {$ref: '#/components/schemas/AlertLog'}
+                  total: {type: integer}
+                  page: {type: integer}
+                  page_size: {type: integer}
+
+  /api/v1/alerts/logs/{id}:
+    get:
+      summary: Detalha log
+      tags: [alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Log
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AlertLog'}
+        "404": {description: Não encontrado}
+
+  /api/v1/alerts/test/{id}:
+    post:
+      summary: Testa uma regra com descrição de exemplo
+      tags: [alerts]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                test_description: {type: string}
+      responses:
+        "200":
+          description: Resultado do teste
