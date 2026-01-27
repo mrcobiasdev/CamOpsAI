@@ -1,0 +1,134 @@
+{
+  "_comment": "Anotações de ground truth para vídeos de teste de motion detection",
+  "_format": "Cada vídeo lista eventos de movimento esperados e métricas de performance",
+  
+  "vehicle_lateral_01.mp4": {
+    "duration_seconds": 10,
+    "fps": 30,
+    "total_frames": 300,
+    "motion_events": [
+      {
+        "start_frame": 30,
+        "end_frame": 120,
+        "type": "vehicle",
+        "description": "Carro passando da esquerda para direita",
+        "expected_score_range": [20, 50]
+      }
+    ],
+    "sensitivity_expectations": {
+      "low": {
+        "detection_rate_min": 0.70,
+        "avg_score_min": 15.0
+      },
+      "medium": {
+        "detection_rate_min": 0.85,
+        "avg_score_min": 20.0
+      },
+      "high": {
+        "detection_rate_min": 0.95,
+        "avg_score_min": 25.0
+      }
+    }
+  },
+
+  "vehicle_frontal_01.mp4": {
+    "duration_seconds": 10,
+    "fps": 30,
+    "total_frames": 300,
+    "motion_events": [
+      {
+        "start_frame": 50,
+        "end_frame": 200,
+        "type": "vehicle",
+        "description": "Carro aproximando de frente",
+        "expected_score_range": [10, 30]
+      }
+    ],
+    "sensitivity_expectations": {
+      "low": {
+        "detection_rate_min": 0.60,
+        "avg_score_min": 10.0
+      },
+      "medium": {
+        "detection_rate_min": 0.75,
+        "avg_score_min": 15.0
+      },
+      "high": {
+        "detection_rate_min": 0.90,
+        "avg_score_min": 20.0
+      }
+    }
+  },
+
+  "person_walking_01.mp4": {
+    "duration_seconds": 8,
+    "fps": 30,
+    "total_frames": 240,
+    "motion_events": [
+      {
+        "start_frame": 20,
+        "end_frame": 180,
+        "type": "person",
+        "description": "Pessoa caminhando normalmente",
+        "expected_score_range": [15, 35]
+      }
+    ],
+    "sensitivity_expectations": {
+      "low": {
+        "detection_rate_min": 0.60,
+        "avg_score_min": 12.0
+      },
+      "medium": {
+        "detection_rate_min": 0.80,
+        "avg_score_min": 18.0
+      },
+      "high": {
+        "detection_rate_min": 0.90,
+        "avg_score_min": 22.0
+      }
+    }
+  },
+
+  "static_outdoor_01.mp4": {
+    "duration_seconds": 10,
+    "fps": 30,
+    "total_frames": 300,
+    "motion_events": [],
+    "sensitivity_expectations": {
+      "low": {
+        "false_positive_rate_max": 0.03,
+        "avg_score_max": 3.0
+      },
+      "medium": {
+        "false_positive_rate_max": 0.08,
+        "avg_score_max": 4.0
+      },
+      "high": {
+        "false_positive_rate_max": 0.12,
+        "avg_score_max": 5.0
+      }
+    }
+  },
+
+  "false_positives_01.mp4": {
+    "duration_seconds": 15,
+    "fps": 30,
+    "total_frames": 450,
+    "description": "Cena com árvores balançando, chuva, variação de luz - sem movimento real",
+    "motion_events": [],
+    "sensitivity_expectations": {
+      "low": {
+        "false_positive_rate_max": 0.10,
+        "comment": "Deve filtrar a maioria das variações ambientais"
+      },
+      "medium": {
+        "false_positive_rate_max": 0.20,
+        "comment": "Pode detectar algumas variações como movimento"
+      },
+      "high": {
+        "false_positive_rate_max": 0.30,
+        "comment": "Mais sensível, pode ter mais falsos positivos"
+      }
+    }
+  }
+}
