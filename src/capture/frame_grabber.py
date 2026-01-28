@@ -145,11 +145,15 @@ class FrameGrabber:
             if self._motion_detector:
                 self._motion_detector.reset()
 
+            # Discard initial frames to allow stream to stabilize
+            await self._discard_initial_frames()
+
             logger.info(f"Câmera {self.config.name} conectada")
             logger.info(
                 f"RTSP configuração: transport={settings.rtsp_transport}, "
                 f"error_recovery={settings.rtsp_error_recovery}, "
-                f"max_consecutive_errors={settings.rtsp_max_consecutive_errors}"
+                f"max_consecutive_errors={settings.rtsp_max_consecutive_errors}, "
+                f"initial_frames_to_discard={settings.initial_frames_to_discard}"
             )
             return True
 
@@ -158,6 +162,103 @@ class FrameGrabber:
             self.state.record_error(str(e))
             logger.error(f"Erro ao conectar à câmera {self.config.name}: {e}")
             return False
+
+    async def _discard_initial_frames(self) -> None:
+        """Discards N initial frames after connection to allow stream to stabilize.
+
+        These frames are used to establish a stable baseline for motion detection
+        but are not processed for motion detection or sent to LLM.
+        """
+        discard_count = settings.initial_frames_to_discard
+
+        if discard_count <= 0:
+            return
+
+        logger.info(
+            f"Discarding {discard_count} initial frames for camera {self.config.name} "
+            f"(stream stabilization + motion detector baseline)"
+        )
+
+        for i in range(discard_count):
+            frame = await self._grab_frame()
+            if frame is not None:
+                self.state.initial_frames_discarded += 1
+                logger.debug(
+                    f"Discarded initial frame {i + 1}/{discard_count} for camera {self.config.name}"
+                )
+
+                if self._motion_detector:
+                    try:
+                        loop = asyncio.get_event_loop()
+                        decoded_frame = await loop.run_in_executor(
+                            None,
+                            lambda: cv2.imdecode(
+                                np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR
+                            ),
+                        )
+
+                        if decoded_frame is not None:
+                            self._motion_detector.detect_motion(decoded_frame)
+                            logger.debug(
+                                f"Stabilized motion detector with frame {i + 1}/{discard_count} "
+                                f"for camera {self.config.name}"
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to stabilize motion detector from discarded frame {i + 1}/{discard_count}: {e}"
+                        )
+            else:
+                logger.debug(
+                    f"Failed to capture initial frame {i + 1}/{discard_count} "
+                    f"for camera {self.config.name} (will continue)"
+                )
+
+        for i in range(discard_count):
+            frame = await self._grab_frame()
+            if frame is not None:
+                self.state.initial_frames_discarded += 1
+                logger.debug(
+                    f"Discarded initial frame {i + 1}/{discard_count} for camera {self.config.name}"
+                )
+
+                if self._motion_detector:
+                    try:
+                        loop = asyncio.get_event_loop()
+                        decoded_frame = await loop.run_in_executor(
+                            None,
+                            lambda: cv2.imdecode(
+                                np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR
+                            ),
+                        )
+
+                        if decoded_frame is not None:
+                            self._motion_detector.update_baseline(decoded_frame)
+                            logger.debug(
+                                f"Updated motion detector baseline with frame {i + 1}/{discard_count} "
+                                f"for camera {self.config.name}"
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to update baseline from discarded frame {i + 1}/{discard_count}: {e}"
+                        )
+            else:
+                logger.debug(
+                    f"Failed to capture initial frame {i + 1}/{discard_count} "
+                    f"for camera {self.config.name} (will continue)"
+                )
+
+        for i in range(discard_count):
+            frame = await self._grab_frame()
+            if frame is not None:
+                self.state.initial_frames_discarded += 1
+                logger.debug(
+                    f"Discarded initial frame {i + 1}/{discard_count} for camera {self.config.name}"
+                )
+            else:
+                logger.debug(
+                    f"Failed to capture initial frame {i + 1}/{discard_count} "
+                    f"for camera {self.config.name} (will continue)"
+                )
 
     def _create_capture(self) -> cv2.VideoCapture:
         """Cria o objeto de captura (executado em thread)."""

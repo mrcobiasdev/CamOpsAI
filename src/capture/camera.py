@@ -69,6 +69,7 @@ class CameraState:
     decoder_error_count: int = 0
     decoder_error_rate: float = 0.0
     last_decoder_error: Optional[str] = None
+    initial_frames_discarded: int = 0
 
     @property
     def detection_rate(self) -> float:
@@ -86,6 +87,7 @@ class CameraState:
         self.last_error = None
         self.avg_motion_score = 0.0
         self.motion_score_sum = 0.0
+        self.initial_frames_discarded = 0
 
     def record_frame(self, timestamp: float):
         """Registra captura de um frame."""

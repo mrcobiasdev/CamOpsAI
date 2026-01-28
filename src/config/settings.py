@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     rtsp_max_consecutive_errors: int = Field(
         default=10, ge=1, le=100, description="Max consecutive errors before reconnect"
     )
+    initial_frames_to_discard: int = Field(
+        default=5,
+        ge=0,
+        description="Number of initial frames to discard after connection",
+    )
 
     def get_llm_api_key(self) -> Optional[str]:
         """Retorna a chave da API do provedor LLM configurado."""

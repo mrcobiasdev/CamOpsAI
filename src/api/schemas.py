@@ -80,6 +80,7 @@ class CameraStatusResponse(BaseModel):
     decoder_error_count: int
     decoder_error_rate: float
     last_decoder_error: Optional[str]
+    initial_frames_discarded: int
 
 
 # ==================== Event Schemas ====================

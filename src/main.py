@@ -127,6 +127,7 @@ class CameraManager:
             "decoder_error_count": state.decoder_error_count,
             "decoder_error_rate": state.decoder_error_rate,
             "last_decoder_error": state.last_decoder_error,
+            "initial_frames_discarded": state.initial_frames_discarded,
         }
 
     async def update_camera_config(self, camera_id: uuid.UUID) -> bool:

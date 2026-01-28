@@ -222,6 +222,10 @@ async def get_camera_status(
             last_frame_at=None,
             errors_count=0,
             last_error=None,
+            decoder_error_count=0,
+            decoder_error_rate=0.0,
+            last_decoder_error=None,
+            initial_frames_discarded=0,
         )
 
     return CameraStatusResponse(
