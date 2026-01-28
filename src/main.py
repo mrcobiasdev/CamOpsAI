@@ -1,6 +1,7 @@
 """Entry point principal do CamOpsAI."""
 
 import sys
+import time
 
 # Fix para Windows: usar ProactorEventLoop para suportar subprocessos
 # Precisa ser definido ANTES de importar qualquer coisa assíncrona
@@ -34,6 +35,7 @@ from src.storage.repository import CameraRepository, EventRepository, AlertRepos
 from src.capture.camera import CameraConfig, CameraState, CameraStatus
 from src.capture.frame_grabber import FrameGrabber
 from src.capture.queue import FrameQueue, FrameItem
+from src.capture.frame_annotation import FrameAnnotation
 from src.analysis import LLMVisionFactory, AnalysisResult
 from src.alerts.detector import KeywordDetector, AlertRule as DetectorAlertRule
 from src.alerts.factory import create_whatsapp_client
@@ -46,6 +48,57 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def cleanup_annotated_frames():
+    """Remove annotated frames older than retention period.
+
+    This function deletes annotated frame files that are older than
+    settings.annotation_retention_days to prevent disk space issues.
+    """
+    if not settings.annotation_enabled:
+        return
+
+    try:
+        annotated_path = Path(settings.annotated_frames_storage_path)
+        if not annotated_path.exists():
+            return
+
+        cutoff_time = time.time() - (settings.annotation_retention_days * 24 * 60 * 60)
+        deleted_count = 0
+        total_size_freed = 0
+
+        for file_path in annotated_path.glob("*_annotated.jpg"):
+            if file_path.is_file() and file_path.stat().st_mtime < cutoff_time:
+                file_size = file_path.stat().st_size
+                file_path.unlink()
+                deleted_count += 1
+                total_size_freed += file_size
+
+        if deleted_count > 0:
+            size_mb = total_size_freed / (1024 * 1024)
+            logger.info(
+                f"Cleaned up {deleted_count} old annotated frames, "
+                f"freed {size_mb:.2f} MB"
+            )
+
+    except Exception as e:
+        logger.error(f"Error cleaning up annotated frames: {e}")
+
+
+async def periodic_cleanup_task():
+    """Periodically cleanup old annotated frames.
+
+    Runs cleanup every 24 hours.
+    """
+    while True:
+        try:
+            await asyncio.sleep(24 * 60 * 60)  # 24 hours
+            cleanup_annotated_frames()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in periodic cleanup task: {e}")
 
 
 class CameraManager:
@@ -197,7 +250,57 @@ async def process_frame(item: FrameItem):
         # Analisa o frame
         result: AnalysisResult = await llm.analyze_frame(item.frame_data)
 
-        # Salva o frame
+        # Get motion data for annotation
+        grabber = camera_manager._grabbers.get(item.camera_id)
+        motion_score = None
+        motion_threshold = None
+        motion_mask = None
+        motion_status = "UNKNOWN"
+
+        if grabber:
+            motion_threshold = grabber.config.motion_threshold
+            if grabber._motion_detector:
+                motion_score = grabber.state.avg_motion_score
+                motion_mask = grabber._motion_detector.get_last_mask()
+                if motion_score is not None and motion_threshold is not None:
+                    motion_status = (
+                        "MOTION" if motion_score >= motion_threshold else "NO MOTION"
+                    )
+
+        # Generate annotated frame if enabled
+        annotated_path = None
+        if settings.annotation_enabled:
+            try:
+                annotator = FrameAnnotation(
+                    motion_score=motion_score,
+                    motion_threshold=motion_threshold,
+                    motion_mask=motion_mask,
+                    llm_keywords=result.keywords,
+                    llm_confidence=result.confidence,
+                    llm_provider=result.provider,
+                    llm_model=result.model,
+                    motion_status=motion_status,
+                )
+
+                annotated_bytes = annotator.annotate_frame(item.frame_data)
+                if annotated_bytes:
+                    storage_path = Path(settings.annotated_frames_storage_path)
+                    storage_path.mkdir(parents=True, exist_ok=True)
+                    timestamp_ms = int(item.timestamp * 1000)
+                    annotated_filename = (
+                        f"{item.camera_id}_{timestamp_ms}_annotated.jpg"
+                    )
+                    annotated_path = storage_path / annotated_filename
+
+                    with open(annotated_path, "wb") as f:
+                        f.write(annotated_bytes)
+                    logger.info(
+                        f"Annotated frame saved: {annotated_path} ({len(annotated_bytes)} bytes)"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to generate annotated frame: {e}")
+
+        # Salva o frame original
         storage_path = Path(settings.frames_storage_path)
         storage_path.mkdir(parents=True, exist_ok=True)
         timestamp_ms = int(item.timestamp * 1000)
@@ -215,6 +318,7 @@ async def process_frame(item: FrameItem):
                 description=result.description,
                 keywords=result.keywords,
                 frame_path=str(frame_path),
+                annotated_frame_path=str(annotated_path) if annotated_path else None,
                 confidence=result.confidence,
                 llm_provider=result.provider,
                 llm_model=result.model,
@@ -327,6 +431,9 @@ async def lifespan(app: FastAPI):
     # Cria diretório de frames
     Path(settings.frames_storage_path).mkdir(parents=True, exist_ok=True)
 
+    # Cria diretório de frames anotados
+    Path(settings.annotated_frames_storage_path).mkdir(parents=True, exist_ok=True)
+
     # Inicializa cliente WhatsApp
     try:
         whatsapp_client = await create_whatsapp_client()
@@ -358,12 +465,25 @@ async def lifespan(app: FastAPI):
     # Inicia câmeras habilitadas
     await camera_manager.start_all()
 
+    # Cleanup old annotated frames on startup
+    cleanup_annotated_frames()
+
+    # Start periodic cleanup task
+    cleanup_task = asyncio.create_task(periodic_cleanup_task())
+
     logger.info("CamOpsAI iniciado com sucesso")
 
     yield
 
     # Shutdown
     logger.info("Encerrando CamOpsAI...")
+
+    # Cancel periodic cleanup task
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
     await camera_manager.stop_all()
     await frame_queue.stop_workers()

@@ -60,6 +60,9 @@ class Event(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     keywords: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     frame_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    annotated_frame_path: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     llm_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     llm_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -70,6 +73,13 @@ class Event(Base):
     alert_logs: Mapped[List["AlertLog"]] = relationship(
         "AlertLog", back_populates="event", cascade="all, delete-orphan"
     )
+
+    @property
+    def annotated_frame_url(self) -> Optional[str]:
+        """Return the URL for the annotated frame."""
+        if not self.annotated_frame_path:
+            return None
+        return f"/api/v1/events/{self.id}/annotated-frame"
 
     def __repr__(self) -> str:
         return f"<Event(id={self.id}, camera_id={self.camera_id})>"

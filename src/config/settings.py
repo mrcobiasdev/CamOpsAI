@@ -118,6 +118,38 @@ class Settings(BaseSettings):
         description="Number of initial frames to discard after connection",
     )
 
+    # Frame Annotation
+    annotation_enabled: bool = Field(
+        default=True, description="Enable frame annotation with motion and LLM overlays"
+    )
+    annotation_mask_alpha: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Transparency of motion mask overlay (0.0-1.0)",
+    )
+    annotation_mask_color: str = Field(
+        default="0,255,0", description="Motion mask color in RGB format"
+    )
+    annotation_text_color: str = Field(
+        default="255,255,255", description="Annotation text color in RGB format"
+    )
+    annotation_font_scale: float = Field(
+        default=0.6, ge=0.1, le=2.0, description="Font scale for annotation text"
+    )
+    annotation_thickness: int = Field(
+        default=2, ge=1, le=5, description="Line thickness for annotation boxes"
+    )
+    annotated_frames_storage_path: str = Field(
+        default="./frames/annotated",
+        description="Directory for storing annotated frames",
+    )
+    annotation_retention_days: int = Field(
+        default=30,
+        ge=1,
+        description="Number of days to keep annotated frames before cleanup",
+    )
+
     def get_llm_api_key(self) -> Optional[str]:
         """Retorna a chave da API do provedor LLM configurado."""
         keys = {

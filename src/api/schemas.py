@@ -99,6 +99,7 @@ class EventCreate(EventBase):
     """Schema para criação de evento."""
 
     frame_path: Optional[str] = None
+    annotated_frame_path: Optional[str] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     processing_time_ms: Optional[int] = None
@@ -110,6 +111,8 @@ class EventResponse(EventBase):
     id: uuid.UUID
     timestamp: datetime
     frame_path: Optional[str]
+    annotated_frame_path: Optional[str] = None
+    annotated_frame_url: Optional[str] = None
     llm_provider: Optional[str]
     llm_model: Optional[str]
     processing_time_ms: Optional[int]

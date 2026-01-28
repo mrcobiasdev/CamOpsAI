@@ -125,6 +125,33 @@ async def get_event_frame(
     )
 
 
+@router.get("/{event_id}/annotated-frame")
+async def get_event_annotated_frame(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna o frame anotado associado a um evento."""
+    repo = EventRepository(db)
+    event = await repo.get_by_id(event_id)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evento não encontrado",
+        )
+
+    if not event.annotated_frame_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Annotated frame not found",
+        )
+
+    return FileResponse(
+        event.annotated_frame_path,
+        media_type="image/jpeg",
+        filename=f"frame_{event_id}_annotated.jpg",
+    )
+
+
 @router.get("/search/keywords")
 async def search_by_keywords(
     keywords: List[str] = Query(..., min_length=1),

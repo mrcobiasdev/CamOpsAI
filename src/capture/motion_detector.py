@@ -79,6 +79,7 @@ class MotionDetector:
         self.debug_dir = Path(debug_dir or "/tmp/motion_debug")
         self._frame_count = 0
         self._previous_frame: Optional[np.ndarray] = None
+        self._last_mask: Optional[np.ndarray] = None
 
         # Create background subtractor with configured parameters
         self._background_subtractor = cv2.createBackgroundSubtractorMOG2(
@@ -190,12 +191,21 @@ class MotionDetector:
     def reset(self):
         """Reset detector state (clear previous frame and background model)."""
         self._previous_frame = None
+        self._last_mask = None
         self._background_subtractor = cv2.createBackgroundSubtractorMOG2(
             detectShadows=True,
             history=self.bg_history,
             varThreshold=self.bg_var_threshold,
         )
         logger.debug("Motion detector reset")
+
+    def get_last_mask(self) -> Optional[np.ndarray]:
+        """Return the last motion mask generated.
+
+        Returns:
+            Motion mask as numpy array, or None if no frame processed yet
+        """
+        return self._last_mask
 
     def detect_motion(self, frame: np.ndarray) -> Tuple[float, bool]:
         """Detect motion in frame.
@@ -237,6 +247,9 @@ class MotionDetector:
             )
 
             has_motion = motion_score >= self.threshold
+
+            # Generate and store motion mask for annotation
+            self._last_mask = self._generate_motion_mask(processed)
 
             # Log motion detection result
             log_msg = (
@@ -356,6 +369,38 @@ class MotionDetector:
 
         # Scale to 0-100
         return min(fg_percentage * 3, 100.0)
+
+    def _generate_motion_mask(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        """Generate motion mask visualization.
+
+        Args:
+            frame: Preprocessed frame
+
+        Returns:
+            Motion mask as numpy array, or None if cannot generate
+        """
+        try:
+            if self._previous_frame is None:
+                return None
+
+            # Calculate pixel difference mask
+            diff = cv2.absdiff(self._previous_frame, frame)
+            _, diff_thresh = cv2.threshold(
+                diff, self.pixel_threshold, 255, cv2.THRESH_BINARY
+            )
+
+            # Calculate background subtraction mask
+            fg_mask = self._background_subtractor.apply(frame)
+            _, bg_thresh = cv2.threshold(fg_mask, 127, 255, cv2.THRESH_BINARY)
+
+            # Combine masks (use maximum of both)
+            combined_mask = cv2.max(diff_thresh, bg_thresh)
+
+            return combined_mask
+
+        except Exception as e:
+            logger.warning(f"Failed to generate motion mask: {e}")
+            return None
 
     def update_threshold(self, threshold: float):
         """Update motion detection threshold.
