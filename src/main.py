@@ -344,6 +344,7 @@ async def lifespan(app: FastAPI):
 
     # Inicializa fila de processamento
     frame_queue = FrameQueue(processor=process_frame, num_workers=2)
+    frame_queue.clear()
     camera_manager.set_frame_queue(frame_queue)
 
     # Carrega dados do banco

@@ -21,7 +21,11 @@ class FrameItem:
 
 
 class FrameQueue:
-    """Fila assíncrona para processamento de frames."""
+    """Fila assíncrona para processamento de frames.
+
+    Gerencia o processamento de frames através de múltiplos workers assíncronos.
+    Rastreia estatísticas de frames processados e descartados.
+    """
 
     def __init__(
         self,
@@ -62,7 +66,9 @@ class FrameQueue:
         """Define o processador de frames."""
         self._processor = processor
 
-    async def put(self, camera_id: uuid.UUID, frame_data: bytes, timestamp: float) -> bool:
+    async def put(
+        self, camera_id: uuid.UUID, frame_data: bytes, timestamp: float
+    ) -> bool:
         """Adiciona um frame na fila."""
         item = FrameItem(
             camera_id=camera_id,
@@ -101,8 +107,7 @@ class FrameQueue:
 
         self._running = True
         self._workers = [
-            asyncio.create_task(self._worker(i))
-            for i in range(self._num_workers)
+            asyncio.create_task(self._worker(i)) for i in range(self._num_workers)
         ]
         logger.info(f"Iniciados {self._num_workers} workers de processamento")
 
@@ -162,3 +167,8 @@ class FrameQueue:
             "workers": len(self._workers),
             "running": self._running,
         }
+
+    def clear(self):
+        """Reseta os contadores da fila de processamento."""
+        self._processed_count = 0
+        self._dropped_count = 0
