@@ -1,8 +1,11 @@
 # CamOpsAI: Sistema de Monitoramento Inteligente de Câmeras IP com Análise de Vídeo por IA
 
 **Autor:** Marcelo Cobias
+
 **Disciplina:**  EII - Visão Computacional Puc-Rio
+
 **Data:** Janeiro 2026
+
 **Repositório:** https://github.com/mrcobiasdev/CamOpsAI
 
 ## Resumo
