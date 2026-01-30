@@ -37,6 +37,7 @@ class FrameGrabber:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._config_lock = asyncio.Lock()
+        self._is_video_file = camera_config.source_type == "video_file"
 
         # Initialize motion detector with sensitivity preset
         if self.config.motion_detection_enabled:
@@ -58,6 +59,11 @@ class FrameGrabber:
     def is_running(self) -> bool:
         """Verifica se está capturando."""
         return self._running
+
+    @property
+    def is_video_file(self) -> bool:
+        """Check if this camera is a video file source."""
+        return self._is_video_file
 
     @property
     def status(self) -> CameraStatus:
@@ -128,7 +134,9 @@ class FrameGrabber:
     async def connect(self) -> bool:
         """Conecta à câmera."""
         self.state.status = CameraStatus.CONNECTING
-        logger.info(f"Conectando à câmera {self.config.name} ({self.config.url})")
+        logger.info(
+            f"Conectando à câmera {self.config.name} ({self.config.url}, type={self.config.source_type})"
+        )
 
         try:
             # Executa a conexão em thread separada para não bloquear
@@ -140,6 +148,21 @@ class FrameGrabber:
 
             self.state.status = CameraStatus.CONNECTED
             self.state.reset_stats()
+
+            # For video files, get metadata
+            if self._is_video_file:
+                total_frames = int(self._capture.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = self._capture.get(cv2.CAP_PROP_FPS)
+                if fps > 0:
+                    duration = total_frames / fps
+                else:
+                    duration = 0.0
+                self.state.total_frames = total_frames
+                self.state.duration_seconds = duration
+                logger.info(
+                    f"Video file metadata: total_frames={total_frames}, "
+                    f"fps={fps:.2f}, duration={duration:.2f}s"
+                )
 
             # Reset motion detector on connection
             if self._motion_detector:
@@ -168,6 +191,9 @@ class FrameGrabber:
 
         These frames are used to establish a stable baseline for motion detection
         but are not processed for motion detection or sent to LLM.
+
+        For video files, this is less critical but still helps stabilize
+        the motion detector baseline before actual processing begins.
         """
         discard_count = settings.initial_frames_to_discard
 
@@ -176,7 +202,7 @@ class FrameGrabber:
 
         logger.info(
             f"Discarding {discard_count} initial frames for camera {self.config.name} "
-            f"(stream stabilization + motion detector baseline)"
+            f"(source_type={self._is_video_file}, stream stabilization + motion detector baseline)"
         )
 
         for i in range(discard_count):
@@ -190,75 +216,34 @@ class FrameGrabber:
                 if self._motion_detector:
                     try:
                         loop = asyncio.get_event_loop()
-                        decoded_frame = await loop.run_in_executor(
-                            None,
-                            lambda: cv2.imdecode(
-                                np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR
-                            ),
-                        )
-
-                        if decoded_frame is not None:
-                            self._motion_detector.detect_motion(decoded_frame)
-                            logger.debug(
-                                f"Stabilized motion detector with frame {i + 1}/{discard_count} "
-                                f"for camera {self.config.name}"
+                        frame_data = frame
+                        if frame_data is not None:
+                            buffer_data = np.frombuffer(frame_data, dtype=np.uint8)
+                            decoded_frame = await loop.run_in_executor(
+                                None, cv2.imdecode, buffer_data, cv2.IMREAD_COLOR
                             )
+
+                            if decoded_frame is not None:
+                                self._motion_detector.detect_motion(decoded_frame)
+                                logger.debug(
+                                    f"Stabilized motion detector with frame {i + 1}/{discard_count} "
+                                    f"for camera {self.config.name}"
+                                )
                     except Exception as e:
                         logger.debug(
                             f"Failed to stabilize motion detector from discarded frame {i + 1}/{discard_count}: {e}"
                         )
             else:
-                logger.debug(
-                    f"Failed to capture initial frame {i + 1}/{discard_count} "
-                    f"for camera {self.config.name} (will continue)"
-                )
-
-        for i in range(discard_count):
-            frame = await self._grab_frame()
-            if frame is not None:
-                self.state.initial_frames_discarded += 1
-                logger.debug(
-                    f"Discarded initial frame {i + 1}/{discard_count} for camera {self.config.name}"
-                )
-
-                if self._motion_detector:
-                    try:
-                        loop = asyncio.get_event_loop()
-                        decoded_frame = await loop.run_in_executor(
-                            None,
-                            lambda: cv2.imdecode(
-                                np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR
-                            ),
-                        )
-
-                        if decoded_frame is not None:
-                            self._motion_detector.update_baseline(decoded_frame)
-                            logger.debug(
-                                f"Updated motion detector baseline with frame {i + 1}/{discard_count} "
-                                f"for camera {self.config.name}"
-                            )
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to update baseline from discarded frame {i + 1}/{discard_count}: {e}"
-                        )
-            else:
-                logger.debug(
-                    f"Failed to capture initial frame {i + 1}/{discard_count} "
-                    f"for camera {self.config.name} (will continue)"
-                )
-
-        for i in range(discard_count):
-            frame = await self._grab_frame()
-            if frame is not None:
-                self.state.initial_frames_discarded += 1
-                logger.debug(
-                    f"Discarded initial frame {i + 1}/{discard_count} for camera {self.config.name}"
-                )
-            else:
-                logger.debug(
-                    f"Failed to capture initial frame {i + 1}/{discard_count} "
-                    f"for camera {self.config.name} (will continue)"
-                )
+                if self._is_video_file:
+                    logger.debug(
+                        f"Failed to capture initial frame {i + 1}/{discard_count} "
+                        f"for camera {self.config.name} (video file may be short)"
+                    )
+                else:
+                    logger.debug(
+                        f"Failed to capture initial frame {i + 1}/{discard_count} "
+                        f"for camera {self.config.name} (will continue)"
+                    )
 
     def _create_capture(self) -> cv2.VideoCapture:
         """Cria o objeto de captura (executado em thread)."""
@@ -357,10 +342,12 @@ class FrameGrabber:
 
                     if frame is not None:
                         self.state.record_frame(current_time)
+                        self.state.current_frame_number += 1
                         logger.info(
                             f"✅ Frame captured: camera={self.config.name}, "
                             f"size={len(frame)} bytes, "
-                            f"total_frames={self.state.frames_captured}"
+                            f"total_frames={self.state.frames_captured}, "
+                            f"frame_number={self.state.current_frame_number}"
                         )
 
                         # Check motion before sending frame
@@ -382,13 +369,29 @@ class FrameGrabber:
                             f"⚠️ Frame capture failed (consecutive errors: {consecutive_errors}/{settings.rtsp_max_consecutive_errors})"
                         )
 
-                # Reconnect only if consecutive errors exceed threshold
-                if consecutive_errors >= settings.rtsp_max_consecutive_errors:
+                # Reconnect only if consecutive errors exceed threshold (skip for video files)
+                if (
+                    consecutive_errors >= settings.rtsp_max_consecutive_errors
+                    and not self._is_video_file
+                ):
                     logger.warning(
                         f"🔄 Too many consecutive errors ({consecutive_errors}), reconnecting camera {self.config.name}"
                     )
                     await self._reconnect()
                     consecutive_errors = 0
+                elif self._is_video_file:
+                    # Video file ended - stop capture gracefully
+                    logger.info(
+                        f"📼 Video file playback completed for camera {self.config.name}"
+                    )
+                    logger.info(
+                        f"📊 Final statistics: "
+                        f"total_frames={self.state.frames_captured}, "
+                        f"frames_sent={self.state.frames_sent}, "
+                        f"frames_filtered={self.state.frames_filtered}"
+                    )
+                    self._running = False
+                    self.state.status = CameraStatus.DISCONNECTED
                 else:
                     # Log that we're waiting for next capture interval
                     time_until_next = interval - (current_time - last_capture)
@@ -404,7 +407,10 @@ class FrameGrabber:
                 break
             except Exception as e:
                 self.state.record_error(str(e))
-                logger.error(f"Erro na captura da câmera {self.config.name}: {e}")
+                error_msg = f"Erro na captura da câmera {self.config.name}: {e}"
+                if self._is_video_file:
+                    error_msg += f" (frame position: {self.state.current_frame_number})"
+                logger.error(error_msg)
                 await asyncio.sleep(5)  # Pausa antes de tentar novamente
 
     async def _grab_frame(self) -> Optional[bytes]:
@@ -504,35 +510,6 @@ class FrameGrabber:
                     f"motion_score={motion_score:.2f}%, "
                     f"threshold={self.config.motion_threshold}%, "
                     f"frame_size={len(frame_bytes)} bytes"
-                )
-
-            # Check for abnormal detection rates
-            self._check_detection_rate()
-
-            return has_motion
-
-        except Exception as e:
-            logger.error(f"Error checking motion: {e}, sending frame to LLM")
-            # Fail-safe: send frame if motion detection fails
-            return True
-
-            # Detect motion
-            motion_score, has_motion = self._motion_detector.detect_motion(frame)
-
-            # Log and update statistics
-            if has_motion:
-                self.state.record_sent_frame(motion_score)
-                logger.debug(
-                    f"Frame sent: camera={self.config.id}, "
-                    f"motion_score={motion_score:.2f}, "
-                    f"threshold={self.config.motion_threshold}"
-                )
-            else:
-                self.state.record_filtered_frame()
-                logger.debug(
-                    f"Frame filtered: camera={self.config.id}, "
-                    f"motion_score={motion_score:.2f}, "
-                    f"threshold={self.config.motion_threshold}"
                 )
 
             # Check for abnormal detection rates

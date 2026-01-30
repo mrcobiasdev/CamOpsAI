@@ -21,6 +21,7 @@ class CameraRepository:
         self,
         name: str,
         url: str,
+        source_type: str = "rtsp",
         enabled: bool = True,
         frame_interval: Optional[int] = None,
         motion_detection_enabled: Optional[bool] = None,
@@ -46,6 +47,7 @@ class CameraRepository:
         camera = Camera(
             name=name,
             url=url,
+            source_type=source_type,
             enabled=enabled,
             frame_interval=frame_interval,
             motion_detection_enabled=motion_detection_enabled,
@@ -77,6 +79,7 @@ class CameraRepository:
         camera_id: uuid.UUID,
         name: Optional[str] = None,
         url: Optional[str] = None,
+        source_type: Optional[str] = None,
         enabled: Optional[bool] = None,
         frame_interval: Optional[int] = None,
         motion_detection_enabled: Optional[bool] = None,
@@ -92,6 +95,8 @@ class CameraRepository:
             camera.name = name
         if url is not None:
             camera.url = url
+        if source_type is not None:
+            camera.source_type = source_type
         if enabled is not None:
             camera.enabled = enabled
         if frame_interval is not None:

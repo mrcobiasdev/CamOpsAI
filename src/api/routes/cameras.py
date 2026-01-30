@@ -24,7 +24,7 @@ Stats Endpoint (/api/v1/stats):
 """
 
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,8 +36,61 @@ from src.api.schemas import (
     CameraResponse,
     CameraStatusResponse,
 )
+import os
 
 router = APIRouter(prefix="/cameras", tags=["Câmeras"])
+
+
+def detect_source_type(url: str) -> str:
+    """Auto-detect source type from URL."""
+    if url.startswith("rtsp://") or url.startswith("rtmp://"):
+        return "rtsp"
+    elif os.path.exists(os.path.expandvars(url)):
+        return "video_file"
+    else:
+        return "rtsp"  # Default to rtsp for unknown URLs
+
+
+def validate_video_file(url: str, source_type: Optional[str]) -> tuple[bool, str]:
+    """Validate video file exists and is readable."""
+    if not source_type or source_type != "video_file":
+        return True, ""
+
+    expanded_path = os.path.expandvars(url)
+    abs_path = os.path.abspath(expanded_path)
+
+    # Check if file exists
+    if not os.path.exists(abs_path):
+        return False, f"Video file not found: {abs_path}"
+
+    # Check file extension
+    supported_extensions = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".m4v"}
+    _, ext = os.path.splitext(abs_path)
+    if ext.lower() not in supported_extensions:
+        return (
+            False,
+            f"Unsupported video format: {ext}. Supported: {', '.join(supported_extensions)}",
+        )
+
+    return True, ""
+
+    expanded_path = os.path.expandvars(url)
+    abs_path = os.path.abspath(expanded_path)
+
+    # Check if file exists
+    if not os.path.exists(abs_path):
+        return False, f"Video file not found: {abs_path}"
+
+    # Check file extension
+    supported_extensions = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".m4v"}
+    _, ext = os.path.splitext(abs_path)
+    if ext.lower() not in supported_extensions:
+        return (
+            False,
+            f"Unsupported video format: {ext}. Supported: {', '.join(supported_extensions)}",
+        )
+
+    return True, ""
 
 
 @router.get("", response_model=List[CameraResponse])
@@ -57,14 +110,29 @@ async def create_camera(
     db: AsyncSession = Depends(get_db),
 ):
     """Cria uma nova câmera."""
+    # Auto-detect source type if not provided
+    source_type = camera.source_type
+    if not source_type or source_type == "rtsp":
+        source_type = detect_source_type(camera.url)
+
+    # Validate video file if source_type is video_file
+    is_valid, error_msg = validate_video_file(camera.url, source_type)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+
     repo = CameraRepository(db)
     new_camera = await repo.create(
         name=camera.name,
         url=camera.url,
+        source_type=source_type,
         enabled=camera.enabled,
         frame_interval=camera.frame_interval,
         motion_detection_enabled=camera.motion_detection_enabled,
         motion_threshold=camera.motion_threshold,
+        motion_sensitivity=camera.motion_sensitivity,
     )
     return new_camera
 
@@ -92,15 +160,31 @@ async def update_camera(
     db: AsyncSession = Depends(get_db),
 ):
     """Atualiza uma câmera."""
+    # Detect source type if URL is being updated
+    source_type = camera.source_type
+    if camera.url and (not source_type or source_type == "rtsp"):
+        source_type = detect_source_type(camera.url)
+
+    # Validate video file if source type is video_file
+    if camera.url:
+        is_valid, error_msg = validate_video_file(camera.url, source_type)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg,
+            )
+
     repo = CameraRepository(db)
     updated = await repo.update(
         camera_id=camera_id,
         name=camera.name,
         url=camera.url,
+        source_type=source_type,
         enabled=camera.enabled,
         frame_interval=camera.frame_interval,
         motion_detection_enabled=camera.motion_detection_enabled,
         motion_threshold=camera.motion_threshold,
+        motion_sensitivity=camera.motion_sensitivity,
     )
     if not updated:
         raise HTTPException(
@@ -149,10 +233,14 @@ async def start_camera(
             id=camera.id,
             name=camera.name,
             url=camera.url,
+            source_type=getattr(camera, "source_type", "rtsp"),
             enabled=camera.enabled,
             frame_interval=camera.frame_interval,
             motion_detection_enabled=camera.motion_detection_enabled,
             motion_threshold=camera.motion_threshold,
+            motion_sensitivity=camera.motion_sensitivity
+            if hasattr(camera, "motion_sensitivity")
+            else "medium",
         )
         await camera_manager.add_camera(config)
 
@@ -226,6 +314,12 @@ async def get_camera_status(
             decoder_error_rate=0.0,
             last_decoder_error=None,
             initial_frames_discarded=0,
+            current_frame_number=0,
+            total_frames=0,
+            progress_percentage=0.0,
+            source_type=camera.source_type
+            if hasattr(camera, "source_type")
+            else "rtsp",
         )
 
     return CameraStatusResponse(
@@ -235,5 +329,12 @@ async def get_camera_status(
         frames_filtered=status_info.get("frames_filtered", 0),
         detection_rate=status_info.get("detection_rate", 0.0),
         avg_motion_score=status_info.get("avg_motion_score", 0.0),
+        current_frame_number=status_info.get("current_frame_number", 0),
+        total_frames=status_info.get("total_frames", 0),
+        progress_percentage=status_info.get("progress_percentage", 0.0),
+        source_type=status_info.get(
+            "source_type",
+            camera.source_type if hasattr(camera, "source_type") else "rtsp",
+        ),
         **status_info,
     )

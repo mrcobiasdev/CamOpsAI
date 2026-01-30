@@ -21,6 +21,7 @@ class Camera(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(20), default="rtsp")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     frame_interval: Mapped[int] = mapped_column(Integer, nullable=False)
     motion_detection_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

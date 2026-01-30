@@ -19,9 +19,12 @@ O CamOpsAI é uma aplicação que captura streams de vídeo de câmeras IP em re
 
 ### 1. Captura de Vídeo
 - Conexão com câmeras IP via protocolo RTSP
+- **Suporte a arquivos de vídeo** para testes e validação (.mp4, .avi, .mov, .mkv, .webm, .flv, .m4v)
 - Suporte a múltiplas câmeras simultaneamente
 - Captura assíncrona com reconexão automática
 - Intervalo de captura configurável por câmera
+- Detecção automática de tipo de fonte (RTSP ou arquivo de vídeo)
+- Parada graciosa ao final do arquivo de vídeo (sem reconexão)
 
 ### 2. Processamento com IA
 - Suporte a múltiplos provedores LLM (OpenAI, Anthropic, Google)
@@ -341,7 +344,8 @@ Acesse `http://localhost:8000/docs` para a documentação interativa (Swagger UI
 |-------|------|-----------|
 | id | UUID | Identificador único |
 | name | VARCHAR(255) | Nome da câmera |
-| url | VARCHAR(512) | URL de conexão RTSP |
+| url | VARCHAR(512) | URL de conexão RTSP ou caminho do arquivo de vídeo |
+| source_type | VARCHAR(20) | Tipo de fonte: `rtsp` ou `video_file` |
 | enabled | BOOLEAN | Status ativo/inativo |
 | frame_interval | INTEGER | Intervalo entre capturas (segundos) |
 | motion_detection_enabled | BOOLEAN | Habilita filtro de movimento |
@@ -416,6 +420,78 @@ python adjust_threshold.py
 ```
 
 **Documentação completa**: [docs/MOTION_DETECTION.md](docs/MOTION_DETECTION.md)
+
+### Arquivos de Vídeo para Testes
+
+O CamOpsAI suporta o uso de arquivos de vídeo como fonte de câmera, permitindo:
+
+- **Testar e validar** o pipeline completo sem hardware de câmera
+- **Reproduzir cenários específicos** com conteúdo de vídeo conhecido
+- **Desenvolvimento e debug** sem streams RTSP ativos
+- **Validação de parâmetros** de detecção de movimento em cenários reais
+
+#### Criar Câmera de Arquivo de Vídeo
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/cameras" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Câmera de Teste",
+    "url": "/path/to/video.mp4",
+    "source_type": "video_file",
+    "enabled": true,
+    "frame_interval": 1,
+    "motion_detection_enabled": true,
+    "motion_threshold": 10.0
+  }'
+```
+
+#### Formatos Suportados
+
+- `.mp4` (recomendado)
+- `.avi`
+- `.mov`
+- `.mkv`
+- `.webm`
+- `.flv`
+- `.m4v`
+
+#### Diferenças entre RTSP e Arquivo de Vídeo
+
+| Característica | RTSP | Arquivo de Vídeo |
+|--------------|-------|------------------|
+| Reconexão automática | Sim | Não (para no final) |
+| Comportamento ao final | Reconecta | Para captura |
+| Validação de URL | Básica | Verifica existência e formato |
+| Progresso | N/A | `current_frame_number`, `total_frames`, `progress_percentage` |
+| Uso recomendado | Produção | Testes/Desenvolvimento |
+
+#### Consultar Status de Arquivo de Vídeo
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/cameras/{camera_id}/status"
+```
+
+Resposta inclui:
+```json
+{
+  "status": "capturing",
+  "current_frame_number": 150,
+  "total_frames": 900,
+  "progress_percentage": 16.67,
+  "source_type": "video_file",
+  "frames_captured": 50,
+  "frames_sent": 45,
+  ...
+}
+```
+
+#### Observações
+
+- O sistema detecta automaticamente o tipo de fonte baseado na URL (`rtsp://` vs. caminho de arquivo)
+- Para arquivos de vídeo, use caminhos absolutos ou variáveis de ambiente (ex: `$VIDEOS_DIR/test.mp4`)
+- Ao final do arquivo, a câmera muda para status "disconnected" automaticamente
+- Reinicie manualmente para reproduzir o arquivo novamente
 
 ## Exemplos de Uso
 

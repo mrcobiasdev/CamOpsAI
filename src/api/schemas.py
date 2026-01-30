@@ -21,6 +21,7 @@ class CameraBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     url: str = Field(..., min_length=1, max_length=512)
+    source_type: str = Field(default="rtsp", pattern="^(rtsp|video_file)$")
     enabled: bool = True
     frame_interval: int = Field(
         default_factory=lambda: settings.frame_interval_seconds, ge=1, le=3600
@@ -43,6 +44,7 @@ class CameraUpdate(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     url: Optional[str] = Field(None, min_length=1, max_length=512)
+    source_type: Optional[str] = Field(None, pattern="^(rtsp|video_file)$")
     enabled: Optional[bool] = None
     frame_interval: Optional[int] = Field(None, ge=1, le=3600)
     motion_detection_enabled: Optional[bool] = None
@@ -81,6 +83,10 @@ class CameraStatusResponse(BaseModel):
     decoder_error_rate: float
     last_decoder_error: Optional[str]
     initial_frames_discarded: int
+    current_frame_number: int = 0
+    total_frames: int = 0
+    progress_percentage: float = 0.0
+    source_type: str = "rtsp"
 
 
 # ==================== Event Schemas ====================

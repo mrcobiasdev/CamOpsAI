@@ -29,6 +29,7 @@ class CameraConfig:
     id: uuid.UUID
     name: str
     url: str
+    source_type: str = "rtsp"
     enabled: bool = True
     frame_interval: Optional[int] = None
     username: Optional[str] = None
@@ -70,6 +71,9 @@ class CameraState:
     decoder_error_rate: float = 0.0
     last_decoder_error: Optional[str] = None
     initial_frames_discarded: int = 0
+    current_frame_number: int = 0
+    total_frames: int = 0
+    duration_seconds: float = 0.0
 
     @property
     def detection_rate(self) -> float:
@@ -77,6 +81,13 @@ class CameraState:
         if self.frames_captured == 0:
             return 0.0
         return (self.frames_sent / self.frames_captured) * 100
+
+    @property
+    def progress_percentage(self) -> float:
+        """Calcula progresso percentual para arquivos de vídeo."""
+        if self.total_frames == 0:
+            return 0.0
+        return (self.current_frame_number / self.total_frames) * 100
 
     def reset_stats(self):
         """Reseta estatísticas."""
@@ -88,6 +99,7 @@ class CameraState:
         self.avg_motion_score = 0.0
         self.motion_score_sum = 0.0
         self.initial_frames_discarded = 0
+        self.current_frame_number = 0
 
     def record_frame(self, timestamp: float):
         """Registra captura de um frame."""

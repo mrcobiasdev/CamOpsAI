@@ -181,6 +181,10 @@ class CameraManager:
             "decoder_error_rate": state.decoder_error_rate,
             "last_decoder_error": state.last_decoder_error,
             "initial_frames_discarded": state.initial_frames_discarded,
+            "current_frame_number": state.current_frame_number,
+            "total_frames": state.total_frames,
+            "progress_percentage": state.progress_percentage,
+            "source_type": grabber.config.source_type,
         }
 
     async def update_camera_config(self, camera_id: uuid.UUID) -> bool:
@@ -209,10 +213,12 @@ class CameraManager:
                 id=camera.id,
                 name=camera.name,
                 url=camera.url,
+                source_type=getattr(camera, "source_type", "rtsp"),
                 enabled=camera.enabled,
                 frame_interval=camera.frame_interval,
                 motion_detection_enabled=camera.motion_detection_enabled,
                 motion_threshold=camera.motion_threshold,
+                motion_sensitivity=getattr(camera, "motion_sensitivity", "medium"),
             )
 
             # Atualiza o grabber com nova configuração
@@ -388,10 +394,12 @@ async def load_cameras_from_db():
                 id=cam.id,
                 name=cam.name,
                 url=cam.url,
+                source_type=getattr(cam, "source_type", "rtsp"),
                 enabled=cam.enabled,
                 frame_interval=cam.frame_interval,
                 motion_detection_enabled=cam.motion_detection_enabled,
                 motion_threshold=cam.motion_threshold,
+                motion_sensitivity=getattr(cam, "motion_sensitivity", "medium"),
             )
             await camera_manager.add_camera(config)
 
