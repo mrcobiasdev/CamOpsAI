@@ -1,5 +1,10 @@
 # CamOpsAI: Sistema de Monitoramento Inteligente de Câmeras IP com Análise de Vídeo por IA
 
+**Autor:** Marcelo Cobias
+**Disciplina:**  EII - Visão Computacional Puc-Rio
+**Data:** Janeiro 2026
+**Repositório:** https://github.com/mrcobiasdev/CamOpsAI
+
 ## Resumo
 
 O CamOpsAI é um sistema de monitoramento inteligente de câmeras IP que utiliza inteligência artificial para automatizar a detecção e análise de eventos em tempo real. O sistema captura streams de vídeo, aplica algoritmos de detecção de movimento para filtrar conteúdo irrelevante, processa frames selecionados através de modelos Large Language Models (LLM) com capacidade de visão, e envia alertas automaticamente via WhatsApp baseados em palavras-chave configuradas. O sistema foi desenvolvido utilizando Python, FastAPI, PostgreSQL e múltiplos provedores de LLM (OpenAI GPT-4V, Anthropic Claude Vision, Google Gemini Vision). Este trabalho demonstra a aplicação prática de visão computacional combinando técnicas clássicas de processamento de vídeo (OpenCV) com modelos modernos de IA generativa, resultando em uma solução eficiente de monitoramento automático com redução de custos operacionais e melhoria na segurança através de alertas em tempo real.
@@ -352,10 +357,3 @@ Após validação, os seguintes arquivos antigos deverão ser removidos (todos o
 - `docs/TROUBLESHOOTING.md` (contido em `docs/guides/troubleshooting.md`)
 - `docs/BUG_FIX_FLUSH_VS_COMMIT.md` (contido em `docs/guides/troubleshooting.md`)
 - `docs/IMPLEMENTACAO_PERSISTENCIA.md` (contido em `docs/guides/troubleshooting.md`)
-
----
-
-**Autor:** Marcelo Cobias
-**Curso:** Disciplina de EII - Visão Computacional: Interpretando o Mundo Através de Imagens - Computer Vision Master
-**Data:** Janeiro 2026
-**Repositório:** https://github.com/mrcobiasdev/CamOpsAI
